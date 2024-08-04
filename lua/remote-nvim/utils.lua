@@ -1,5 +1,6 @@
 local M = {}
 local constants = require("remote-nvim.constants")
+local lfs = require("lfs")
 M.uv = vim.fn.has("nvim-0.10") and vim.uv or vim.loop
 ---@type plenary.logger
 M.logger = nil
@@ -269,6 +270,49 @@ function M.run_cmd(cmd, args, cb)
 
   job:start()
   return job
+end
+
+--- Recursively builds a tree structure of files and directories, excluding specified ones.
+---@param path string, string[] The starting directory path.
+---@param exclude_dirs string[] table of directory names to exclude.
+---@param exclude_files string[] table of file names to exclude.
+---@param depth number? current depth in the directory tree (used for printing hierarchy, optional).
+---@param tree string[]? table that accumulates the paths of included files and directories (optional).
+---@return string[] containing the paths and types ("file" or "directory") of non-excluded files and directories.
+function M.build_tree(path, exclude_dirs, exclude_files, depth, tree)
+  depth = depth or 0
+  tree = tree or {} -- Initialize the tree table if not provided
+
+  --- Checks if a value exists within a table.
+  ---@param table string[] The table to search.
+  ---@param val string value to search for.
+  ---@return boolean if the value is found, false otherwise.
+  local function contains(table, val)
+    for i = 1, #table do
+      if table[i] == val then
+        return true
+      end
+    end
+    return false
+  end
+
+  for file in lfs.dir(path) do
+    if file ~= "." and file ~= ".." then
+      local file_path = path .. "/" .. file
+      local attr = lfs.attributes(file_path)
+      if attr.mode == "directory" then
+        if not contains(exclude_dirs, file) then
+          table.insert(tree, file_path)
+          M.build_tree(file_path, exclude_dirs, exclude_files, depth + 1, tree)
+        end
+      elseif attr.mode == "file" then
+        if not contains(exclude_files, file) then
+          table.insert(tree, file_path)
+        end
+      end
+    end
+  end
+  return tree
 end
 
 return M

@@ -69,15 +69,22 @@ local utils = require("remote-nvim.utils")
 ---@param copy_config remote-nvim.config.PluginConfig.Remote.CopyDirs.FolderStructure
 local function get_copy_paths(copy_config)
   local local_dirs = copy_config.dirs
+  local local_exclude_dirs = copy_config.exclude_dirs
+  local local_exclude_files = copy_config.exclude_files
+  local local_paths = {}
   if local_dirs == "*" then
-    return { utils.path_join(utils.is_windows, copy_config.base, ".") }
+    if next(local_exclude_dirs) ~= nil and next(local_exclude_files) ~= nil then
+      return { utils.path_join(utils.is_windows, copy_config.base, ".") }
+    end
+    local_paths =
+      utils.build_tree(utils.path_join(utils.is_windows, copy_config.base), local_exclude_dirs, local_exclude_files)
+    return local_paths
   else
     assert(
       type(local_dirs) == "table",
       "remote.config.copy_dirs.config.dirs should either be '*' or a list of subdirectories"
     )
 
-    local local_paths = {}
     for _, subdir in ipairs(local_dirs) do
       local path = utils.path_join(utils.is_windows, copy_config.base, subdir)
       table.insert(local_paths, path)
@@ -85,6 +92,8 @@ local function get_copy_paths(copy_config)
 
     return local_paths
   end
+
+  return utils.build_tree(local_dirs, local_exclude_dirs, local_exclude_files, 0)
 end
 
 ---@class remote-nvim.providers.ProviderOpts
@@ -238,7 +247,7 @@ function Provider:_setup_workspace_variables()
   end
   self._remote_neovim_config_path =
     utils.path_join(self._remote_is_windows, self._remote_xdg_config_path, remote_nvim.config.remote.app_name)
-
+  print("self._remote_neovim_config_path", self._remote_neovim_config_path)
   self:_add_session_info()
 end
 
@@ -643,7 +652,6 @@ function Provider:_setup_remote()
     end
 
     self:run_command(install_neovim_cmd, "Installing Neovim (if required)")
-
     -- Upload user neovim config, if necessary
     if self:_get_neovim_config_upload_preference() then
       self:upload(
@@ -1050,6 +1058,7 @@ function Provider:upload(local_paths, remote_path, desc, compression_opts)
       error(("Local path '%s' does not exist"):format(path))
     end
   end
+
   local local_path = table.concat(local_paths, " ")
   self.logger.fmt_debug(
     "[%s][%s] Uploading %s to %s on remote",
